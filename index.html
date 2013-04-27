@@ -1,0 +1,155 @@
+<html ng-app="perpendicular">
+	<head>
+		<title>Testie</title>
+		<link rel="stylesheet" href="chosen.css" />
+	</head>
+	<body ng-controller="ApplicationController">
+		
+		<select ng-disabled="!tags.length" class="chzn-select" data-placeholder="Choose a Country..." style="width:350px;" multiple tabindex="3" ng-model="selectedTags" pp-chosen-bind="{ tentative: 'tentativeInput.text', results: 'tags', filtered: 'visibleTags' }">
+			<option ng-repeat="visibleTag in visibleTags" value="{{ visibleTag }}">{{ visibleTag }}</option>
+		</select>
+		
+		<hr>
+		
+		<p>
+			<strong>Selected: </strong>{{ selectedTags }}
+		</p>
+		
+		<script src="jquery.js"></script>
+		<script src="jquery-migrate.js"></script>
+		<script src="chosen.js"></script>
+		<script src="angular.js"></script>
+		<script>
+			
+			var app = angular.module('perpendicular', []);
+			app.directive('ppChosenBind', function($compile) {
+		    
+				return function($scope, $element, $attrs) {
+					
+					var parameters = $scope.$eval($attrs.ppChosenBind);
+					var boundAngularModel = $attrs.ngModel;
+					var boundTentativeModel = parameters.tentative;
+					var boundResultsModel = parameters.results;
+					var boundFilteredModel = parameters.filtered;
+					
+					$(document).ready(function (){
+						
+						var currentTentativeTagExists = function () {
+							var modelText = $scope.$eval(boundTentativeModel);
+							var existingTags = ($scope.$eval(boundAngularModel) || []);
+							return (-1 != existingTags.indexOf(modelText));
+						}
+						
+						function ChosenHax () {
+						}
+						
+				    ChosenHax.prototype.no_results = function (terms) {
+							
+				      this.search_results.append(
+								currentTentativeTagExists()
+									? $('<li class="no-results">You already have this tag.</li>')
+									: $('<li class="no-results">No tags match <strong>' + terms + '</strong>. Hit Return to create it.</li>')
+							);
+						}
+						
+						ChosenHax.prototype.search_field_scale = function () {
+						}
+						
+						ChosenHax.prototype.close_field = function () {
+							if (this.suppressClosingField) {
+								return;
+							}
+							this.search_field.val("");
+							Chosen.prototype.close_field.call(this);
+						}
+						
+						ChosenHax.prototype.result_select = function (event) {
+							if (this.result_highlight) {
+								Chosen.prototype.result_select.call(this, event);	
+							} else {
+								var me = this;
+								$scope.$apply(function(){
+									if (currentTentativeTagExists()) {
+										me.search_field.val("");
+										return;
+									}
+									var modelText = $scope.$eval(boundTentativeModel);
+									$scope.$eval(boundResultsModel).push(modelText);
+									$scope.$eval(boundFilteredModel).push(modelText);
+									window.setTimeout(function(){
+										me.suppressClosingField = true;
+										$element.trigger("liszt:updated");
+										me.search_field.val(modelText);
+										me.winnow_results();
+										Chosen.prototype.result_select.call(me, event);	
+										me.suppressClosingField = false;
+									}, 1);
+									return;
+								});
+							}
+						}
+						
+						$element.bind("liszt:ready", function (event, data) {
+							var chosen = data.chosen;
+							var $textField = chosen.search_field.attr("ng-model", boundTentativeModel);
+							var textFieldHTML = $("<div>").append($textField.eq(0).clone()).html();
+							var $ngTextField = $compile(textFieldHTML)($scope);
+							$textField.before($ngTextField).remove();
+							chosen.search_field = $ngTextField;
+							$element.data("chosen", $.extend(chosen, new ChosenHax()));
+						}).chosen();
+						
+						$scope.$watch(boundTentativeModel, function (toVal, fromVal) {
+							if (!toVal) {
+								$scope.$eval(boundFilteredModel + " = []");
+								return;
+							}
+							var matches = $.map($scope.$eval(boundResultsModel), function (obj) {
+								var needle = angular.lowercase(toVal);
+								var haystack = angular.lowercase(obj);
+								return (haystack.slice(0, needle.length) == needle)
+									? haystack
+									: null;
+							});
+							var visibleFilteredItems = $.merge([], ($scope.$eval(boundAngularModel) || []));
+							$.each(matches, function (idx, obj) {
+								if (-1 == visibleFilteredItems.indexOf(obj))
+									visibleFilteredItems.push(obj);
+							});							
+							$scope.$eval(boundFilteredModel + " = " + JSON.stringify(visibleFilteredItems));
+						});
+						
+						$scope.$watch(boundFilteredModel, function (toVal, fromVal) {
+							window.setTimeout(function(){
+								var chosen = $element.data("chosen");
+								var currentTerm = chosen.search_field.val();
+								chosen.suppressClosingField = true;
+								$element.trigger("liszt:updated");
+								chosen.search_field.val(currentTerm);
+								chosen.winnow_results();
+								chosen.suppressClosingField = false;
+							});
+						});
+						
+					});
+					
+				};
+				
+			});
+			
+			function ApplicationController ($scope, $http, $compile) {
+				
+				$scope.tags = [];
+				$scope.visibleTags = [];
+				$scope.tentativeInput = {};
+				
+			  $http.get('tags.json').then(function(response){
+					$scope.tags = response.data;
+					$scope.visibleTags = [];
+			  });
+				
+			};
+			
+		</script>
+	</body>
+</html>
